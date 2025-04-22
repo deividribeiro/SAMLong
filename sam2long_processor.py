@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import List, Tuple, Optional
 from moviepy.editor import ImageSequenceClip
 
-# Import SAM2 predictor - you'll need to install the SAM2Long package
 from sam2.build_sam import build_sam2_video_predictor
 
 
@@ -114,10 +113,6 @@ class SAM2LongProcessor:
     def add_point(self, x, y, point_type="include"):
         """
         Add a tracking point
-
-        Args:
-            x, y: Coordinates of the point
-            point_type: "include" or "exclude"
         """
         self.tracking_points.append([x, y])
 
@@ -290,6 +285,8 @@ class SAM2LongProcessor:
 
             print(f"Generated output video: {output_path}")
             return output_path
+        else:
+            raise ValueError("Invalid vis_frame_type. Use 'check' or 'render'.")
 
     def _show_mask(self, mask, ax, obj_id=None, random_color=False):
         """Helper function to display mask on pyplot axis"""
