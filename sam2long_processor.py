@@ -14,6 +14,8 @@ from sam2.build_sam import build_sam2_video_predictor
 
 
 class SAM2LongProcessor:
+    SAM_DIR = "/users/5/ribei056/software/python/sam2"
+    SAM2LONG_DIR = "//users/5/ribei056/software/python/SAM2Long/sam2"
     def __init__(self):
         self.inference_state = None
         self.predictor = None
@@ -32,18 +34,18 @@ class SAM2LongProcessor:
     def load_model(self, checkpoint="tiny"):
         """Load the SAM2 model based on the specified checkpoint size"""
         if checkpoint == "tiny":
-            sam2_checkpoint = "./checkpoints/sam2.1_hiera_tiny.pt"
-            model_cfg = "configs/sam2.1/sam2.1_hiera_t.yaml"
+            sam2_checkpoint = f"{self.SAM_DIR}/checkpoints/sam2.1_hiera_tiny.pt"
+            model_cfg = f"{self.SAM2LONG_DIR}/configs/sam2.1/sam2.1_hiera_t.yaml"
         elif checkpoint == "small":
-            sam2_checkpoint = "./checkpoints/sam2.1_hiera_small.pt"
-            model_cfg = "configs/sam2.1/sam2.1_hiera_s.yaml"
+            sam2_checkpoint = f"{self.SAM_DIR}/checkpoints/sam2.1_hiera_small.pt"
+            model_cfg = f"{self.SAM2LONG_DIR}/configs/sam2.1/sam2.1_hiera_s.yaml"
         elif checkpoint == "base-plus":
-            sam2_checkpoint = "./checkpoints/sam2.1_hiera_base_plus.pt"
-            model_cfg = "configs/sam2.1/sam2.1_hiera_b+.yaml"
+            sam2_checkpoint = f"{self.SAM_DIR}/checkpoints/sam2.1_hiera_base_plus.pt"
+            model_cfg = f"{self.SAM2LONG_DIR}/configs/sam2.1/sam2.1_hiera_b+.yaml"
         else:
             raise ValueError(f"Invalid checkpoint: {checkpoint}")
 
-        print(f"Loading checkpoint: {checkpoint}")
+        print(f"Loading checkpoint: {checkpoint}, ({sam2_checkpoint}, {model_cfg})")
         self.predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=self.device)
         print("Model loaded successfully")
         return self.predictor
