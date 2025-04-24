@@ -17,6 +17,11 @@ class SAM2LongProcessor:
     SAM_DIR = "/users/5/ribei056/software/python/sam2"
     SAM2LONG_DIR = "//users/5/ribei056/software/python/SAM2Long/sam2"
     def __init__(self):
+        self.frame_rate_render = 6
+        self.visualization_step = 15
+        self.unique_id = None
+        self.outdir = None
+        self.start_frame = 0
         self.inference_state = None
         self.predictor = None
         self.first_frame_path = None
@@ -27,9 +32,6 @@ class SAM2LongProcessor:
         self.frame_names = []
         self.available_frames = []
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        # Create output directories if they don't exist
-        os.makedirs("frames_output_images", exist_ok=True)
 
     def load_model(self, checkpoint="tiny"):
         """Load the SAM2 model based on the specified checkpoint size"""
@@ -62,12 +64,15 @@ class SAM2LongProcessor:
             Path to the first frame
         """
         # # Generate a unique ID based on current date and time
-        # unique_id = datetime.now().strftime('%Y%m%d%H%M%S')
-        unique_id = os.path.splitext(os.path.basename(video_path))[0]
+        self.unique_id = os.path.splitext(os.path.basename(video_path))[0]
 
         # Create output directory
-        extracted_frames_output_dir = f'{outdir}/frames_{unique_id}'
+        self.outdir = outdir
+        extracted_frames_output_dir = f'{self.outdir}/frames_{self.unique_id}'
+
+        # Create output directories if they don't exist
         os.makedirs(extracted_frames_output_dir, exist_ok=True)
+        os.makedirs(f"{self.outdir}/frames_output_images", exist_ok=True)
 
         # Open the video file
         cap = cv2.VideoCapture(video_path)
@@ -85,7 +90,7 @@ class SAM2LongProcessor:
             if not ret or frame_number >= max_frames:
                 break
 
-            if frame_number % 6 == 0:  # Save every 6th frame
+            if frame_number % self.frame_rate_render == 0:  # Save every nth frame
                 frame_filename = os.path.join(extracted_frames_output_dir, f'{frame_number:05d}.jpg')
                 cv2.imwrite(frame_filename, frame)
 
@@ -113,11 +118,12 @@ class SAM2LongProcessor:
         # Return the path to access the first frame
         return self.first_frame_path
 
-    def add_point(self, x, y, point_type="include"):
+    def add_point(self, x, y, frame_idx, point_type="include"):
         """
         Add a tracking point
         """
         self.tracking_points.append([x, y])
+        self.start_frame = frame_idx
 
         # Add label (1 for include, 0 for exclude)
         if point_type == "include":
@@ -127,7 +133,7 @@ class SAM2LongProcessor:
         else:
             raise ValueError("Point type must be 'include' or 'exclude'")
 
-        print(f"Added {point_type} point at ({x}, {y})")
+        print(f"Added {point_type} point at ({x}, {y}) starting at frame {self.start_frame}")
         return self.tracking_points, self.trackings_input_label
 
     def clear_points(self):
@@ -162,7 +168,7 @@ class SAM2LongProcessor:
             self.inference_state['device'] = self.device
 
         # Process the points
-        ann_frame_idx = 0  # First frame
+        ann_frame_idx = self.start_frame # First frame
         ann_obj_id = 1  # Object ID
 
         points = np.array(self.tracking_points, dtype=np.float32)
@@ -184,7 +190,7 @@ class SAM2LongProcessor:
         self._show_mask((out_mask_logits[0] > 0.0).cpu().numpy(), plt.gca(), obj_id=out_obj_ids[0])
 
         # Save output
-        output_filename = "output_first_frame.jpg"
+        output_filename = f"{self.outdir}/output_first_frame.jpg"
         plt.savefig(output_filename, format='jpg')
         plt.close()
 
@@ -229,7 +235,7 @@ class SAM2LongProcessor:
             self.inference_state["device"] = 'cpu'
 
         # Clear output directory
-        frames_output_dir = "frames_output_images"
+        frames_output_dir = f"{self.outdir}/frames_output_images"
         for f in os.listdir(frames_output_dir):
             os.remove(os.path.join(frames_output_dir, f))
 
@@ -248,7 +254,7 @@ class SAM2LongProcessor:
             }
 
         # Determine visualization stride
-        vis_frame_stride = 15 if vis_frame_type == "check" else 1
+        vis_frame_stride = self.visualization_step if vis_frame_type == "check" else 1
 
         # Render frames with masks
         jpeg_images = []
@@ -280,10 +286,10 @@ class SAM2LongProcessor:
             cap.release()
 
             # Create clip
-            clip = ImageSequenceClip(jpeg_images, fps=original_fps // 6)
+            clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render)
 
             # Write output
-            output_path = "output_video.mp4"
+            output_path = f"{self.outdir}/output_video.mp4"
             clip.write_videofile(output_path, codec='libx264')
 
             print(f"Generated output video: {output_path}")
@@ -322,12 +328,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="SAM2Long Video Segmenter")
     parser.add_argument("--video", type=str, help="Path to input video")
     parser.add_argument("--points", type=str, help="Points as 'x1,y1:1;x2,y2:0' where 1=include, 0=exclude")
+    parser.add_argument("--frame", type=int, default=0, help="Frame to start process")
     parser.add_argument("--checkpoint", type=str, default="tiny",
                         choices=["tiny", "small", "base-plus"],
                         help="Model checkpoint to use")
-    parser.add_argument("--output", type=str, default="check",
-                        choices=["check", "render"],
-                        help="Output type (check=sample frames, render=video)")
     parser.add_argument("--outdir", type=str, default="output", help="Output directory")
 
     return parser.parse_args()
@@ -350,19 +354,15 @@ def main():
             coords, label = point.split(':')
             x, y = map(int, coords.split(','))
             point_type = "include" if label == "1" else "exclude"
-            processor.add_point(x, y, point_type)
+            processor.add_point(x, y, args.frame, point_type)
 
     # Generate mask
     processor.get_mask(args.checkpoint)
 
     # Propagate to all frames
-    result = processor.propagate(args.output, args.checkpoint)
+    sample_frames = processor.propagate("check", args.checkpoint)
 
-    # Print result
-    if args.output == "check":
-        print(f"Generated {len(result)} frames with masks")
-    else:
-        print(f"Generated video at {result}")
+    video_output = processor.propagate("render", args.checkpoint)
 
 
 if __name__ == "__main__":
