@@ -283,13 +283,18 @@ class SAM2LongProcessor:
             os.remove(os.path.join(frames_output_dir, f))
 
         # Run propagation
+        print(f"Starting mask propagation across {self.inference_state['num_frames']} frames...")
+        start_time = datetime.now()
         out_obj_ids, out_mask_logits = self.predictor.propagate_in_video(
             self.inference_state,
             start_frame_idx=0,
             reverse=False
         )
+        propagation_time = datetime.now() - start_time
+        print(f"Mask propagation completed in {propagation_time.total_seconds():.2f} seconds")
 
         # Store results
+        print("Processing mask results...")
         video_segments = {}
         for frame_idx in range(0, self.inference_state['num_frames']):
             video_segments[frame_idx] = {
@@ -299,13 +304,21 @@ class SAM2LongProcessor:
         # Determine visualization stride
         vis_frame_stride = self.visualization_step if vis_frame_type == "check" else 1
 
+        # Calculate total frames to process
+        total_frames = len(range(0, len(self.frame_names), vis_frame_stride))
+        print(f"Rendering {total_frames} frames with masks...")
+
         # Render frames with masks in batches
         jpeg_images = []
         batch_size = 100  # Adjust based on your memory constraints
+        processed_frames = 0
 
         for start_idx in range(0, len(self.frame_names), batch_size):
             batch_frames = []
             end_idx = min(start_idx + batch_size, len(self.frame_names))
+            batch_start_time = datetime.now()
+
+            print(f"Processing batch {start_idx//batch_size + 1}/{(len(self.frame_names) + batch_size - 1)//batch_size}...")
 
             for out_frame_idx in range(start_idx, end_idx, vis_frame_stride):
                 plt.figure(figsize=(6, 4))
@@ -325,18 +338,34 @@ class SAM2LongProcessor:
                 img.close()  # Explicitly close PIL image
 
                 batch_frames.append(output_filename)
+                processed_frames += 1
+
+                # Print progress every 10 frames or at specific percentages
+                if processed_frames % 10 == 0 or processed_frames == total_frames:
+                    progress_percent = (processed_frames / total_frames) * 100
+                    print(f"Progress: {processed_frames}/{total_frames} frames ({progress_percent:.1f}%)")
 
             jpeg_images.extend(batch_frames)
+
+            batch_time = datetime.now() - batch_start_time
+            frames_per_second = len(batch_frames) / batch_time.total_seconds() if batch_time.total_seconds() > 0 else 0
+            print(f"Batch completed in {batch_time.total_seconds():.2f} seconds ({frames_per_second:.2f} frames/second)")
 
             # Force garbage collection
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+        total_time = datetime.now() - start_time
+        print(f"Total processing time: {total_time.total_seconds():.2f} seconds")
 
         if vis_frame_type == "check":
             print(f"Generated {len(jpeg_images)} sample frames with masks")
             return jpeg_images
         elif vis_frame_type == "render":
             # Create video from frames
+            print("Creating output video...")
+            video_start_time = datetime.now()
+
             cap = cv2.VideoCapture(os.path.join(self.video_frames_dir, self.frame_names[0]))
             original_fps = cap.get(cv2.CAP_PROP_FPS)
             cap.release()
@@ -348,13 +377,15 @@ class SAM2LongProcessor:
             # Option 1: Create clip with lazy loading
             clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render,
                                      load_images=False)  # Lazy loading
-            clip.write_videofile(output_path, codec='libx264', threads=4)
+            clip.write_videofile(output_path, codec='libx264', threads=4,
+                                 logger=None)
 
             # Option 2: Use ffmpeg directly
             # import subprocess
             # cmd = f"ffmpeg -framerate {original_fps // self.frame_rate_render} -i {frames_output_dir}/frame_%d.jpg -c:v libx264 -pix_fmt yuv420p {output_path}"
             # subprocess.call(cmd, shell=True)
-
+            video_time = datetime.now() - video_start_time
+            print(f"Video creation completed in {video_time.total_seconds():.2f} seconds")
             print(f"Generated output video: {output_path}")
             return output_path
         else:
