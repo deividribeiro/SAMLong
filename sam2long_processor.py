@@ -299,25 +299,38 @@ class SAM2LongProcessor:
         # Determine visualization stride
         vis_frame_stride = self.visualization_step if vis_frame_type == "check" else 1
 
-        # Render frames with masks
+        # Render frames with masks in batches
         jpeg_images = []
-        for out_frame_idx in range(0, len(self.frame_names), vis_frame_stride):
-            plt.figure(figsize=(6, 4))
-            plt.title(f"frame {out_frame_idx}")
-            plt.imshow(Image.open(os.path.join(self.video_frames_dir, self.frame_names[out_frame_idx])))
+        batch_size = 100  # Adjust based on your memory constraints
 
-            for out_obj_id, out_mask in video_segments[out_frame_idx].items():
-                self._show_mask(out_mask, plt.gca(), obj_id=out_obj_id)
+        for start_idx in range(0, len(self.frame_names), batch_size):
+            batch_frames = []
+            end_idx = min(start_idx + batch_size, len(self.frame_names))
 
-            # Save frame
-            output_filename = os.path.join(frames_output_dir, f"frame_{out_frame_idx}.jpg")
-            plt.savefig(output_filename, format='jpg')
-            plt.close()
+            for out_frame_idx in range(start_idx, end_idx, vis_frame_stride):
+                plt.figure(figsize=(6, 4))
+                plt.title(f"frame {out_frame_idx}")
 
-            jpeg_images.append(output_filename)
+                # Open and process image
+                img = Image.open(os.path.join(self.video_frames_dir, self.frame_names[out_frame_idx]))
+                plt.imshow(img)
 
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+                for out_obj_id, out_mask in video_segments[out_frame_idx].items():
+                    self._show_mask(out_mask, plt.gca(), obj_id=out_obj_id)
+
+                # Save frame
+                output_filename = os.path.join(frames_output_dir, f"frame_{out_frame_idx}.jpg")
+                plt.savefig(output_filename, format='jpg')
+                plt.close()
+                img.close()  # Explicitly close PIL image
+
+                batch_frames.append(output_filename)
+
+            jpeg_images.extend(batch_frames)
+
+            # Force garbage collection
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         if vis_frame_type == "check":
             print(f"Generated {len(jpeg_images)} sample frames with masks")
@@ -328,12 +341,19 @@ class SAM2LongProcessor:
             original_fps = cap.get(cv2.CAP_PROP_FPS)
             cap.release()
 
-            # Create clip
-            clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render)
-
-            # Write output
+            # Instead of creating ImageSequenceClip with all images at once
+            # Use a more memory-efficient approach
             output_path = f"{self.outdir}/output_video.mp4"
-            clip.write_videofile(output_path, codec='libx264')
+
+            # Option 1: Create clip with lazy loading
+            clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render,
+                                     load_images=False)  # Lazy loading
+            clip.write_videofile(output_path, codec='libx264', threads=4)
+
+            # Option 2: Use ffmpeg directly
+            # import subprocess
+            # cmd = f"ffmpeg -framerate {original_fps // self.frame_rate_render} -i {frames_output_dir}/frame_%d.jpg -c:v libx264 -pix_fmt yuv420p {output_path}"
+            # subprocess.call(cmd, shell=True)
 
             print(f"Generated output video: {output_path}")
             return output_path
@@ -364,6 +384,27 @@ class SAM2LongProcessor:
         if len(neg_points) > 0:
             ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*',
                        s=marker_size, edgecolor='white', linewidth=1.25)
+
+    def cleanup_temp_files(self):
+        """
+        Clean up temporary files created during video generation.
+        Removes all temporary frame images from frames_output_images directory.
+        """
+        frames_output_dir = f"{self.outdir}/frames_output_images"
+        if os.path.exists(frames_output_dir):
+            file_count = 0
+            for f in os.listdir(frames_output_dir):
+                file_path = os.path.join(frames_output_dir, f)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        file_count += 1
+                except Exception as e:
+                    print(f"Error removing file {file_path}: {e}")
+
+            print(f"Cleaned up {file_count} temporary files from {frames_output_dir}")
+        else:
+            print(f"Temporary directory {frames_output_dir} not found")
 
 
 def parse_args():
