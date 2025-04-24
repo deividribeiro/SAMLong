@@ -50,7 +50,7 @@ class SAM2LongProcessor:
         print("Model loaded successfully")
         return self.predictor
 
-    def preprocess_video(self, video_path, max_duration=60):
+    def preprocess_video(self, video_path, outdir, max_duration=60):
         """
         Extract frames from a video file.
 
@@ -61,11 +61,12 @@ class SAM2LongProcessor:
         Returns:
             Path to the first frame
         """
-        # Generate a unique ID based on current date and time
-        unique_id = datetime.now().strftime('%Y%m%d%H%M%S')
+        # # Generate a unique ID based on current date and time
+        # unique_id = datetime.now().strftime('%Y%m%d%H%M%S')
+        unique_id = os.path.splitext(os.path.basename(video_path))[0]
 
         # Create output directory
-        extracted_frames_output_dir = f'frames_{unique_id}'
+        extracted_frames_output_dir = f'{outdir}/frames_{unique_id}'
         os.makedirs(extracted_frames_output_dir, exist_ok=True)
 
         # Open the video file
@@ -327,6 +328,7 @@ def parse_args():
     parser.add_argument("--output", type=str, default="check",
                         choices=["check", "render"],
                         help="Output type (check=sample frames, render=video)")
+    parser.add_argument("--outdir", type=str, default="output", help="Output directory")
 
     return parser.parse_args()
 
@@ -339,7 +341,7 @@ def main():
     processor = SAM2LongProcessor()
 
     # Process video
-    processor.preprocess_video(args.video)
+    processor.preprocess_video(args.video, args.outdir)
 
     # Parse and add points
     if args.points:
