@@ -6,7 +6,6 @@
 VIDEO_PATH=""
 POINTS=""
 CHECKPOINT="tiny"
-OUTPUT_TYPE="check"
 JOB_NAME="sam2long"
 LOG_DIR="/home/fortson/ribei056/data/Leech"
 OUTDIRECTORY=$LOG_DIR
@@ -25,8 +24,8 @@ usage() {
     echo "Options:"
     echo "  --video PATH       Path to input video (required)"
     echo "  --points POINTS    Points as 'x1,y1:1;x2,y2:0' where 1=include, 0=exclude"
+    echo "  --frame  FRAME     Index number for starting frame "
     echo "  --checkpoint TYPE  Model checkpoint: tiny, small, base-plus (default: tiny)"
-    echo "  --output TYPE      Output type: check or render (default: check)"
     echo "  --job-name NAME    SLURM job name (default: sam2long)"
     echo "  --help             Display this help message"
 }
@@ -46,12 +45,12 @@ while [[ $# -gt 0 ]]; do
             CHECKPOINT="$2"
             shift 2
             ;;
-        --output)
-            OUTPUT_TYPE="$2"
-            shift 2
-            ;;
         --job-name)
             JOB_NAME="$2"
+            shift 2
+            ;;
+        --frame)
+            FRAME="$2"
             shift 2
             ;;
         --help)
@@ -85,7 +84,7 @@ cat > $SLURM_SCRIPT << EOF
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64g
 #SBATCH --tmp=32g
-#SBATCH --ntasks=8
+#SBATCH --ntasks=4
 #SBATCH --time=3:00:00
 
 # Load any required modules or activate virtual environment here
@@ -102,15 +101,15 @@ nvidia-smi
 VIDEO_PATH="${VIDEO_PATH}"
 POINTS="${POINTS}"
 CHECKPOINT="${CHECKPOINT}"
-OUTPUT_TYPE="${OUTPUT_TYPE}"
 OUTDIRECTORY="${OUTDIRECTORY}"
+FRAME="${FRAME}"
 
 # Execute the Python script with parameters
 ${PYTHON_PATH} /home/fortson/ribei056/software/python/SAM2Long/sam2long_runner.py \\
     --video "\$VIDEO_PATH" \\
     --checkpoint "\$CHECKPOINT" \\
-    --output "\$OUTPUT_TYPE" \\
     --outdir "\$OUTDIRECTORY" \\
+    --frame "\$FRAME" \\
     $([ ! -z "$POINTS" ] && echo "--points \"\$POINTS\"")
 
 echo "Job completed at \$(date)"
