@@ -55,75 +55,118 @@ class SAM2LongProcessor:
     def preprocess_video(self, video_path, outdir, max_duration=60):
         """
         Extract frames from a video file.
-
         Args:
             video_path: Path to the video file
+            outdir: Output directory path
             max_duration: Maximum duration to process in seconds
-
         Returns:
             Path to the first frame
         """
-        # # Generate a unique ID based on current date and time
-        self.unique_id = os.path.splitext(os.path.basename(video_path))[0]
+        try:
+            # Generate a unique ID based on the video filename
+            self.unique_id = os.path.splitext(os.path.basename(video_path))[0]
 
-        # Create output directory
-        self.outdir = outdir
-        extracted_frames_output_dir = f'{self.outdir}/frames_{self.unique_id}'
+            # Create output directory
+            self.outdir = outdir
+            extracted_frames_output_dir = f'{self.outdir}/frames_{self.unique_id}'
 
-        # Create output directories if they don't exist
-        os.makedirs(extracted_frames_output_dir, exist_ok=True)
-        os.makedirs(f"{self.outdir}/frames_output_images", exist_ok=True)
+            # Create output directories if they don't exist
+            os.makedirs(extracted_frames_output_dir, exist_ok=True)
+            os.makedirs(f"{self.outdir}/frames_output_images", exist_ok=True)
 
-        # Open the video file
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise ValueError("Error: Could not open video.")
+            # Check if frames already exist
+            existing_frames = [
+                p for p in os.listdir(extracted_frames_output_dir)
+                if os.path.splitext(p)[-1].lower() in [".jpg", ".jpeg"]
+            ]
 
-        # Get video properties
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        max_frames = int(fps * max_duration)
+            # If frames already exist, skip extraction
+            if existing_frames:
+                print(f"Found {len(existing_frames)} existing frames, skipping extraction")
+                self.scanned_frames = existing_frames
+                self.scanned_frames.sort(key=lambda p: int(os.path.splitext(p)[0]))
+                self.video_frames_dir = extracted_frames_output_dir
+                self.first_frame_path = os.path.join(extracted_frames_output_dir, self.scanned_frames[0])
+                print(f"Using existing frames from: {extracted_frames_output_dir}")
+                print(f"First frame at: {self.first_frame_path}")
+                return self.first_frame_path
 
-        # Extract frames
-        frame_number = 0
-        while True:
-            ret, frame = cap.read()
-            if not ret or frame_number >= max_frames:
-                break
+            # Open the video file
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                raise ValueError(f"Error: Could not open video file {video_path}")
 
-            if frame_number % self.frame_rate_render == 0:  # Save every nth frame
-                frame_filename = os.path.join(extracted_frames_output_dir, f'{frame_number:05d}.jpg')
-                cv2.imwrite(frame_filename, frame)
+            try:
+                # Get video properties
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                if fps <= 0:
+                    print(f"Warning: Invalid FPS ({fps}), using default value of 30")
+                    fps = 30
 
-            # Store first frame path
-            if frame_number == 0:
-                self.first_frame_path = os.path.join(extracted_frames_output_dir, f'{frame_number:05d}.jpg')
+                max_frames = int(fps * max_duration)
 
-            frame_number += 1
+                # Extract frames
+                frame_number = 0
+                while True:
+                    ret, frame = cap.read()
+                    if not ret or frame_number >= max_frames:
+                        break
 
-        # Release video
-        cap.release()
+                    if frame_number % self.frame_rate_render == 0:  # Save every nth frame
+                        frame_filename = os.path.join(extracted_frames_output_dir, f'{frame_number:05d}.jpg')
+                        # Check if frame file already exists
+                        if not os.path.exists(frame_filename):
+                            cv2.imwrite(frame_filename, frame)
 
-        # Scan all JPEG frames
-        self.scanned_frames = [
-            p for p in os.listdir(extracted_frames_output_dir)
-            if os.path.splitext(p)[-1].lower() in [".jpg", ".jpeg"]
-        ]
-        self.scanned_frames.sort(key=lambda p: int(os.path.splitext(p)[0]))
+                    # Store first frame path
+                    if frame_number == 0:
+                        self.first_frame_path = os.path.join(extracted_frames_output_dir, f'{frame_number:05d}.jpg')
 
-        self.video_frames_dir = extracted_frames_output_dir
+                    frame_number += 1
 
-        print(f"Processed {len(self.scanned_frames)} frames from video")
-        print(f"First frame saved at: {self.first_frame_path}")
+            except Exception as e:
+                print(f"Error during frame extraction: {str(e)}")
+                raise
+            finally:
+                # Release video resources
+                cap.release()
 
-        # Return the path to access the first frame
-        return self.first_frame_path
+            # Scan all JPEG frames
+            self.scanned_frames = [
+                p for p in os.listdir(extracted_frames_output_dir)
+                if os.path.splitext(p)[-1].lower() in [".jpg", ".jpeg"]
+            ]
 
-    def add_point(self, x, y, frame_idx, point_type="include"):
+            if not self.scanned_frames:
+                raise ValueError(f"No frames were extracted from the video {video_path}")
+
+            self.scanned_frames.sort(key=lambda p: int(os.path.splitext(p)[0]))
+            self.video_frames_dir = extracted_frames_output_dir
+
+            print(f"Processed {len(self.scanned_frames)} frames from video")
+            print(f"First frame saved at: {self.first_frame_path}")
+
+            # Return the path to access the first frame
+            return self.first_frame_path
+
+        except FileNotFoundError:
+            print(f"Error: Video file not found: {video_path}")
+            raise
+        except PermissionError:
+            print(f"Error: Permission denied when accessing {video_path} or {outdir}")
+            raise
+        except Exception as e:
+            print(f"Error processing video {video_path}: {str(e)}")
+            raise
+
+    def add_point(self, x, y, start_frame_idx, point_type="include"):
         """
         Add a tracking point
         """
         self.tracking_points.append([x, y])
-        self.start_frame = frame_idx
+        if start_frame_idx < 0:
+            raise ValueError("Start frame index must be >= 0")
+        self.start_frame = start_frame_idx
 
         # Add label (1 for include, 0 for exclude)
         if point_type == "include":
@@ -341,6 +384,15 @@ def main():
     """Main function for command line usage"""
     args = parse_args()
 
+    # Validate video file exists and is a valid video file
+    if not os.path.isfile(args.video):
+        raise FileNotFoundError(f"Video file not found: {args.video}")
+
+    # Check file extension (simple validation)
+    valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm']
+    if not any(args.video.lower().endswith(ext) for ext in valid_extensions):
+        raise ValueError(f"Invalid video file format. Supported formats: {', '.join(valid_extensions)}")
+
     # Initialize processor
     processor = SAM2LongProcessor()
 
@@ -349,19 +401,34 @@ def main():
 
     # Parse and add points
     if args.points:
+        # Validate points format using regex
+        point_pattern = r'^\d+,\d+:[01](?:;\d+,\d+:[01])*$'
+        if not re.match(point_pattern, args.points):
+            raise ValueError("Invalid points format. Expected format: 'x1,y1:1;x2,y2:0' where x,y are integers and "
+                             "the value after colon is either 0 or 1 (1=include, 0=exclude)")
+
         points = args.points.split(';')
         for point in points:
-            coords, label = point.split(':')
-            x, y = map(int, coords.split(','))
-            point_type = "include" if label == "1" else "exclude"
-            processor.add_point(x, y, args.frame, point_type)
+            try:
+                coords, label = point.split(':')
+                if label not in ['0', '1']:
+                    raise ValueError(f"Invalid label value: {label}. Must be either 0 or 1")
+
+                try:
+                    x, y = map(int, coords.split(','))
+                except ValueError:
+                    raise ValueError(f"Invalid coordinates: {coords}. Must be integers")
+
+                point_type = "include" if label == "1" else "exclude"
+                processor.add_point(x, y, args.frame, point_type)
+            except Exception as e:
+                raise ValueError(f"Error parsing point '{point}': {str(e)}")
 
     # Generate mask
     processor.get_mask(args.checkpoint)
 
     # Propagate to all frames
     sample_frames = processor.propagate("check", args.checkpoint)
-
     video_output = processor.propagate("render", args.checkpoint)
 
 
