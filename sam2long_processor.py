@@ -463,7 +463,7 @@ def main():
         raise FileNotFoundError(f"Video file not found: {args.video}")
 
     # Check file extension (simple validation)
-    valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm']
+    valid_extensions = ['.mpeg', '.mpg', '.mp4', '.mov']
     if not any(args.video.lower().endswith(ext) for ext in valid_extensions):
         raise ValueError(f"Invalid video file format. Supported formats: {', '.join(valid_extensions)}")
 
