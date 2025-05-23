@@ -3,6 +3,8 @@
 import argparse
 import os
 import re
+import subprocess
+
 import torch
 import numpy as np
 import cv2
@@ -168,7 +170,8 @@ class SAM2LongProcessor:
         self.tracking_points.append([x, y])
         if start_frame_idx < 0:
             raise ValueError("Start frame index must be >= 0")
-        self.start_frame = start_frame_idx
+        self.start_frame = ((start_frame_idx + self.frame_rate_render - 1) // self.frame_rate_render) * self.frame_rate_render
+        self.start_frame_idx = self.start_frame // self.frame_rate_render
 
         # Add label (1 for include, 0 for exclude)
         if point_type == "include":
@@ -213,7 +216,7 @@ class SAM2LongProcessor:
             self.inference_state['device'] = self.device
 
         # Process the points
-        ann_frame_idx = self.start_frame # First frame
+        ann_frame_idx = self.start_frame_idx # First frame
         ann_obj_id = 1  # Object ID
 
         points = np.array(self.tracking_points, dtype=np.float32)
@@ -281,15 +284,14 @@ class SAM2LongProcessor:
 
         # Clear output directory
         frames_output_dir = f"{self.outdir}/frames_output_images"
-        for f in os.listdir(frames_output_dir):
-            os.remove(os.path.join(frames_output_dir, f))
+        self.cleanup_temp_files()
 
         # Run propagation
         print(f"Starting mask propagation across {self.inference_state['num_frames']} frames...")
         start_time = datetime.now()
         out_obj_ids, out_mask_logits = self.predictor.propagate_in_video(
             self.inference_state,
-            start_frame_idx=0,
+            start_frame_idx=self.start_frame_idx,
             reverse=False
         )
         propagation_time = datetime.now() - start_time
@@ -298,7 +300,7 @@ class SAM2LongProcessor:
         # Store results
         print("Processing mask results...")
         video_segments = {}
-        for frame_idx in range(0, self.inference_state['num_frames']):
+        for frame_idx in range(0, self.inference_state['num_frames']-self.start_frame_idx):
             video_segments[frame_idx] = {
                 out_obj_ids[0]: (out_mask_logits[frame_idx] > 0.0).cpu().numpy()
             }
@@ -330,8 +332,9 @@ class SAM2LongProcessor:
                 img = Image.open(os.path.join(self.video_frames_dir, self.frame_names[out_frame_idx]))
                 plt.imshow(img)
 
-                for out_obj_id, out_mask in video_segments[out_frame_idx].items():
-                    self._show_mask(out_mask, plt.gca(), obj_id=out_obj_id)
+                if out_frame_idx >= self.start_frame_idx:
+                    for out_obj_id, out_mask in video_segments[out_frame_idx-self.start_frame_idx].items():
+                        self._show_mask(out_mask, plt.gca(), obj_id=out_obj_id)
 
                 # Save frame
                 output_filename = os.path.join(frames_output_dir, f"frame_{out_frame_idx}.jpg")
@@ -374,18 +377,19 @@ class SAM2LongProcessor:
 
             # Instead of creating ImageSequenceClip with all images at once
             # Use a more memory-efficient approach
-            output_path = f"{self.outdir}/output_video.mp4"
+            output_path = f"{self.outdir}/output_video_{self.unique_id}.mp4"
 
             # Option 1: Create clip with lazy loading
-            clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render,
-                                     load_images=False)  # Lazy loading
-            clip.write_videofile(output_path, codec='libx264', threads=4,
-                                 logger=None)
+            # clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render,
+            #                          load_images=False)  # Lazy loading
+            # clip.write_videofile(output_path, codec='libx264', threads=4,
+            #                      logger=None)
 
             # Option 2: Use ffmpeg directly
             # import subprocess
-            # cmd = f"ffmpeg -framerate {original_fps // self.frame_rate_render} -i {frames_output_dir}/frame_%d.jpg -c:v libx264 -pix_fmt yuv420p {output_path}"
-            # subprocess.call(cmd, shell=True)
+            cmd = f"ffmpeg -framerate {original_fps // self.frame_rate_render} -i {frames_output_dir}/frame_%d.jpg -c:v mjpeg {output_path}"
+            print(f"Running command: {cmd}")
+            subprocess.call(cmd, shell=True)
             video_time = datetime.now() - video_start_time
             print(f"Video creation completed in {video_time.total_seconds():.2f} seconds")
             print(f"Generated output video: {output_path}")
