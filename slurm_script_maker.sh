@@ -117,7 +117,7 @@ OUTDIRECTORY="${OUTDIRECTORY}"
 FRAME="${FRAME}"
 
 # Execute the Python script with parameters
-${PYTHON_PATH} /home/fortson/ribei056/software/python/SAM2Long/sam2long_runner.py \\
+${PYTHON_PATH} /home/fortson/ribei056/software/python/SAM2Long/sam2long_processor.py \\
     --video "\$VIDEO_PATH" \\
     --checkpoint "\$CHECKPOINT" \\
     --outdir "\$OUTDIRECTORY" \\
