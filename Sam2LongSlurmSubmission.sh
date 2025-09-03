@@ -85,7 +85,7 @@ cat > $SLURM_SCRIPT << EOF
 #SBATCH --mem=64g
 #SBATCH --tmp=32g
 #SBATCH --ntasks=4
-#SBATCH --time=3:00:00
+#SBATCH --time=6:00:00
 
 # Load any required modules or activate virtual environment here
 module load conda
@@ -98,7 +98,19 @@ echo "CUDA devices: \$CUDA_VISIBLE_DEVICES"
 nvidia-smi
 
 # Define script parameters
-VIDEO_PATH="${VIDEO_PATH}"
+VIDEO_PATH="$(echo ${VIDEO_PATH} | sed 's/\\/\\\\/g; s/"/\\"/g')"
+
+# Now process the video path
+LOG_DIR=${LOG_DIR}
+VIDEO_PATH_BASE="$(basename "${VIDEO_PATH}")"
+OLD_VIDEO_PATH_DIR="$(dirname "${VIDEO_PATH}")"
+VIDEO_PATH_DIR="\$(basename "\${OLD_VIDEO_PATH_DIR}")"
+mkdir -p "\${LOG_DIR}/\${VIDEO_PATH_DIR}"
+cp "\${VIDEO_PATH}" "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}"
+ffmpeg -i "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}" "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE%.*}.mp4"
+rm "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}"
+VIDEO_PATH="\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE%.*}.mp4"
+
 POINTS="${POINTS}"
 CHECKPOINT="${CHECKPOINT}"
 OUTDIRECTORY="${OUTDIRECTORY}"
