@@ -245,7 +245,7 @@ class SAM2LongProcessor:
         parameters = {}
         for frame_idx, frame_path in enumerate(self.scanned_frames):
             frame = cv2.imread(os.path.join(self.video_frames_dir, frame_path))
-            pars = self.get_frame_parameters(frame.sum(axis=2) / 3)
+            pars = self.get_frame_parameters(frame)
             parameters[frame_idx * self.frame_rate_render] = pars
         return parameters
 

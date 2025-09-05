@@ -102,13 +102,13 @@ VIDEO_PATH="$(echo ${VIDEO_PATH} | sed 's/\\/\\\\/g; s/"/\\"/g')"
 
 # Now process the video path
 SAM2LONG_DIR="/home/fortson/ribei056/software/python/SAM2Long"
-LOG_DIR=${LOG_DIR}
+LOG_DIR="${LOG_DIR}"
 VIDEO_PATH_BASE="$(basename "${VIDEO_PATH}")"
 OLD_VIDEO_PATH_DIR="$(dirname "${VIDEO_PATH}")"
 VIDEO_PATH_DIR="\$(basename "\${OLD_VIDEO_PATH_DIR}")"
 mkdir -p "\${LOG_DIR}/\${VIDEO_PATH_DIR}"
 cp "\${VIDEO_PATH}" "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}"
-ffmpeg -i "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}" "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE%.*}.mp4"
+ffmpeg -y -i "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}" "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE%.*}.mp4"
 rm "\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE}"
 VIDEO_PATH="\${LOG_DIR}/\${VIDEO_PATH_DIR}/\${VIDEO_PATH_BASE%.*}.mp4"
 
@@ -118,7 +118,7 @@ OUTDIRECTORY="${OUTDIRECTORY}"
 FRAME="${FRAME}"
 
 # Execute the Python script with parameters
-${PYTHON_PATH} ${SAM2LONG_DIR}/sam2long_processor.py \\
+${PYTHON_PATH} "\${SAM2LONG_DIR}"/sam2long_processor.py \\
     --video "\$VIDEO_PATH" \\
     --checkpoint "\$CHECKPOINT" \\
     --outdir "\$OUTDIRECTORY" \\
