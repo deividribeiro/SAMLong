@@ -32,7 +32,9 @@ class SAM2LongProcessor:
         self.tracking_points = []
         self.trackings_input_label = []
         self.video_frames_dir = None
+        self.frames_output_dir = None
         self.scanned_frames = []
+        self.jpeg_images = None
         self.frame_names = []
         self.available_frames = []
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -455,10 +457,11 @@ class SAM2LongProcessor:
         print(f"Rendering {total_frames} frames with masks...")
 
         # Render frames with masks in batches
-        jpeg_images = []
+        self.jpeg_images = []
         batch_size = 100  # Adjust based on your memory constraints
         processed_frames = 0
 
+        self.frames_output_dir = frames_output_dir
         for start_idx in range(0, len(self.frame_names), batch_size):
             batch_frames = []
             end_idx = min(start_idx + batch_size, len(self.frame_names))
@@ -480,13 +483,13 @@ class SAM2LongProcessor:
 
                         # Also save the mask for this frame/object as a small compressed numpy file
                         mask_output_filename = os.path.join(
-                            frames_output_dir,
+                            self.frames_output_dir,
                             f"frame_{out_frame_idx}_obj{out_obj_id}.npz"
                         )
                         np.savez_compressed(mask_output_filename, mask=out_mask)
 
                 # Save frame
-                output_filename = os.path.join(frames_output_dir, f"frame_{out_frame_idx}.jpg")
+                output_filename = os.path.join(self.frames_output_dir, f"frame_{out_frame_idx}.jpg")
                 plt.savefig(output_filename, format='jpg')
                 plt.close()
                 img.close()  # Explicitly close PIL image
@@ -499,7 +502,7 @@ class SAM2LongProcessor:
                     progress_percent = (processed_frames / total_frames) * 100
                     print(f"Progress: {processed_frames}/{total_frames} frames ({progress_percent:.1f}%)")
 
-            jpeg_images.extend(batch_frames)
+            self.jpeg_images.extend(batch_frames)
 
             batch_time = datetime.now() - batch_start_time
             frames_per_second = len(batch_frames) / batch_time.total_seconds() if batch_time.total_seconds() > 0 else 0
@@ -513,38 +516,35 @@ class SAM2LongProcessor:
         print(f"Total processing time: {total_time.total_seconds():.2f} seconds")
 
         if vis_frame_type == "check":
-            print(f"Generated {len(jpeg_images)} sample frames with masks")
-            return jpeg_images
-        elif vis_frame_type == "render":
-            # Create video from frames
-            print("Creating output video...")
-            video_start_time = datetime.now()
+            print(f"Generated {len(self.jpeg_images)} sample frames with masks")
 
-            cap = cv2.VideoCapture(os.path.join(self.video_frames_dir, self.frame_names[0]))
-            original_fps = cap.get(cv2.CAP_PROP_FPS)
-            cap.release()
+    def generate_movie(self) -> str:
+        print("Creating output video...")
+        video_start_time = datetime.now()
 
-            # Instead of creating ImageSequenceClip with all images at once
-            # Use a more memory-efficient approach
-            output_path = f"{self.outdir}/output_video_{self.unique_id}.mp4"
+        cap = cv2.VideoCapture(os.path.join(self.video_frames_dir, self.frame_names[0]))
+        original_fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
 
-            # Option 1: Create clip with lazy loading
-            # clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render,
-            #                          load_images=False)  # Lazy loading
-            # clip.write_videofile(output_path, codec='libx264', threads=4,
-            #                      logger=None)
+        # Instead of creating ImageSequenceClip with all images at once
+        # Use a more memory-efficient approach
+        output_path = f"{self.outdir}/output_video_{self.unique_id}.mp4"
 
-            # Option 2: Use ffmpeg directly
-            # import subprocess
-            cmd = f"ffmpeg -framerate {original_fps // self.frame_rate_render} -i {frames_output_dir}/frame_%d.jpg -c:v mjpeg {output_path}"
-            print(f"Running command: {cmd}")
-            subprocess.call(cmd, shell=True)
-            video_time = datetime.now() - video_start_time
-            print(f"Video creation completed in {video_time.total_seconds():.2f} seconds")
-            print(f"Generated output video: {output_path}")
-            return output_path
-        else:
-            raise ValueError("Invalid vis_frame_type. Use 'check' or 'render'.")
+        # Option 1: Create clip with lazy loading
+        # clip = ImageSequenceClip(jpeg_images, fps=original_fps // self.frame_rate_render,
+        #                          load_images=False)  # Lazy loading
+        # clip.write_videofile(output_path, codec='libx264', threads=4,
+        #                      logger=None)
+
+        # Option 2: Use ffmpeg directly
+        # import subprocess
+        cmd = f"ffmpeg -framerate {original_fps // self.frame_rate_render} -i {self.frames_output_dir}/frame_%d.jpg -c:v mjpeg {output_path}"
+        print(f"Running command: {cmd}")
+        subprocess.call(cmd, shell=True)
+        video_time = datetime.now() - video_start_time
+        print(f"Video creation completed in {video_time.total_seconds():.2f} seconds")
+        print(f"Generated output video: {output_path}")
+        return output_path
 
     def _show_mask(self, mask, ax, obj_id=None, random_color=False):
         """Helper function to display mask on pyplot axis"""
@@ -576,11 +576,10 @@ class SAM2LongProcessor:
         Clean up temporary files created during video generation.
         Removes all temporary frame images from frames_output_images directory.
         """
-        frames_output_dir = f"{self.outdir}/frames_output_images"
-        if os.path.exists(frames_output_dir):
+        if os.path.exists(self.frames_output_dir):
             file_count = 0
-            for f in os.listdir(frames_output_dir):
-                file_path = os.path.join(frames_output_dir, f)
+            for f in os.listdir(self.frames_output_dir):
+                file_path = os.path.join(self.frames_output_dir, f)
                 try:
                     if os.path.isfile(file_path):
                         os.remove(file_path)
@@ -588,9 +587,9 @@ class SAM2LongProcessor:
                 except Exception as e:
                     print(f"Error removing file {file_path}: {e}")
 
-            print(f"Cleaned up {file_count} temporary files from {frames_output_dir}")
+            print(f"Cleaned up {file_count} temporary files from {self.frames_output_dir}")
         else:
-            print(f"Temporary directory {frames_output_dir} not found")
+            print(f"Temporary directory {self.frames_output_dir} not found")
 
 
 def parse_args():
@@ -662,8 +661,8 @@ def main():
     processor.get_mask(args.checkpoint)
 
     # Propagate to all frames
-    sample_frames = processor.propagate("check", args.checkpoint)
-    video_output = processor.propagate("render", args.checkpoint)
+    processor.propagate("render", args.checkpoint)
+    processor.generate_movie()
 
 
 if __name__ == "__main__":
