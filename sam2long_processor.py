@@ -19,7 +19,7 @@ from sam2.build_sam import build_sam2_video_predictor
 
 class SAM2LongProcessor:
     SAM_DIR = "/users/5/ribei056/software/python/sam2"
-    SAM2LONG_DIR = "//users/5/ribei056/software/python/SAM2Long/sam2"
+    SAM2LONG_DIR = "//users/5/ribei056/software/python/SAM2Long/sam2" #looks like the extra // is necessary
     def __init__(self):
         self.frame_rate_render = 6
         self.visualization_step = 15
@@ -162,6 +162,148 @@ class SAM2LongProcessor:
         except Exception as e:
             print(f"Error processing video {video_path}: {str(e)}")
             raise
+
+    def get_frame_parameters(self, frame):
+        """
+        Calculate frame parameters (image moments) from the current mask.
+        """
+        # Convert to grayscale (single channel)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Threshold to isolate dark regions (adjust threshold as needed)
+        _, thresh = cv2.threshold(gray, 75, 255, cv2.THRESH_BINARY_INV)
+
+        # Find contours
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Find the largest contour (assuming it's your darkest region)
+        cx, cy = frame.shape[0] // 2, frame.shape[1] // 2
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+
+            # Calculate the centroid
+            M = cv2.moments(largest_contour)
+            if M["m00"] != 0:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+
+        frame = 255-np.asarray(frame.sum(axis=2)/3)
+
+        # Coordinates: y = rows, x = cols
+        y_idx, x_idx = np.indices(frame.shape)
+
+        # Weights = pixel intensities
+        weights = np.array(frame, dtype=float)
+        weights = np.nan_to_num(weights, nan=0.0)
+
+        W = weights.sum()
+
+        # Weighted centroid
+        cog_x = (x_idx * weights).sum() / W
+        cog_y = (y_idx * weights).sum() / W
+
+        # Centered coords
+        dx = x_idx - cog_x
+        dy = y_idx - cog_y
+
+        # Second-order moments
+        var_x = (weights * dx ** 2).sum() / W
+        var_y = (weights * dy ** 2).sum() / W
+        cov_xy = (weights * dx * dy).sum() / W
+
+        cov = np.array([[var_x, cov_xy],
+                        [cov_xy, var_y]])
+
+        # Eigen decomposition
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        order = np.argsort(eigvals)[::-1]
+        eigvals = eigvals[order]
+        eigvecs = eigvecs[:, order]
+
+        # Length = sqrt(major eigenvalue), Width = sqrt(minor eigenvalue)
+        length = np.sqrt(eigvals[0])
+        width = np.sqrt(eigvals[1])
+
+        # Orientation angle (degrees, relative to x-axis)
+        angle = np.degrees(np.arctan2(eigvecs[0, 0], eigvecs[0, 1]))
+
+        return {
+            "centroid_x": cog_x,
+            "centroid_y": cog_y,
+            "std_x": np.sqrt(var_x),
+            "std_y": np.sqrt(var_y),
+            "width": width,
+            "length": length,
+            "angle": angle,
+            "cov": cov,
+            "intensity": float(W),
+            "darkest_center_x": cx,
+            "darkest_center_y": cy
+        }
+
+    def scan_frames_for_parameters(self):
+        parameters = {}
+        for frame_idx, frame_path in enumerate(self.scanned_frames):
+            frame = cv2.imread(os.path.join(self.video_frames_dir, frame_path))
+            pars = self.get_frame_parameters(frame.sum(axis=2) / 3)
+            parameters[frame_idx * self.frame_rate_render] = pars
+        return parameters
+
+    def find_best_image(self, pars):
+        all_peaks = []
+        frame_numbers = [idx for idx in pars.keys()]
+        par_to_check = ["darkest_center_x", "darkest_center_y"]
+        for par in par_to_check:
+            # Compare with neighbors
+            arr = np.array([pars[idx][par] for idx in pars.keys()])
+            peaks = self.find_stability_point_derivative(arr, window_size=10, derivative_threshold=0.1, min_stable_duration=10)
+            all_peaks.append(peaks+1)
+        pick = int(np.median(np.array(all_peaks))) # get one more than the median, just in case it's the next frame.
+        pick_frame = frame_numbers[pick]
+
+        return pick, pick_frame
+
+    def find_stability_point(self, signal, window_size=10, stability_threshold=0.1, min_stable_duration=10):
+        variances = []
+        for i in range(len(signal) - window_size + 1):
+            window = signal[i:i + window_size]
+            variances.append(np.var(window))
+
+        variances = np.array(variances)
+
+        signal_range = np.max(signal) - np.min(signal)
+        absolute_threshold = stability_threshold * signal_range
+
+        stable_mask = variances < absolute_threshold
+
+        stable_start = None
+        current_stable_count = 0
+
+        for i, is_stable in enumerate(stable_mask):
+            if is_stable:
+                current_stable_count += 1
+                if current_stable_count >= min_stable_duration and stable_start is None:
+                    stable_start = i + window_size // 2
+                    break
+            else:
+                current_stable_count = 0
+
+        return stable_start if stable_start is not None else 0
+
+    def find_stability_point_derivative(self, signal, window_size=10, derivative_threshold=0.1, min_stable_duration=10):
+
+        smoothed = np.convolve(signal, np.ones(window_size) / window_size, mode='valid')
+
+        derivative = np.abs(np.diff(smoothed))
+
+        signal_range = np.max(signal) - np.min(signal)
+        threshold = derivative_threshold * signal_range
+
+        for i in range(len(derivative) - min_stable_duration):
+            if np.all(derivative[i:i + min_stable_duration] < threshold):
+                return i + window_size + min_stable_duration
+
+        return 0
 
     def add_point(self, x, y, start_frame_idx, point_type="include"):
         """
@@ -336,6 +478,13 @@ class SAM2LongProcessor:
                     for out_obj_id, out_mask in video_segments[out_frame_idx-self.start_frame_idx].items():
                         self._show_mask(out_mask, plt.gca(), obj_id=out_obj_id)
 
+                        # Also save the mask for this frame/object as a small compressed numpy file
+                        mask_output_filename = os.path.join(
+                            frames_output_dir,
+                            f"frame_{out_frame_idx}_obj{out_obj_id}.npz"
+                        )
+                        np.savez_compressed(mask_output_filename, mask=out_mask)
+
                 # Save frame
                 output_filename = os.path.join(frames_output_dir, f"frame_{out_frame_idx}.jpg")
                 plt.savefig(output_filename, format='jpg')
@@ -477,6 +626,11 @@ def main():
     # Process video
     processor.preprocess_video(args.video, args.outdir)
 
+    par_dict = processor.scan_frames_for_parameters()
+    pick, pick_frame = processor.find_best_image(par_dict)
+    x = par_dict[pick_frame]['darkest_center_x']
+    y = par_dict[pick_frame]['darkest_center_y']
+
     # Parse and add points
     if args.points:
         # Validate points format using regex
@@ -501,6 +655,8 @@ def main():
                 processor.add_point(x, y, args.frame, point_type)
             except Exception as e:
                 raise ValueError(f"Error parsing point '{point}': {str(e)}")
+    else:
+        processor.add_point(x, y, pick_frame, "include")
 
     # Generate mask
     processor.get_mask(args.checkpoint)

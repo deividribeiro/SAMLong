@@ -122,7 +122,7 @@ ${PYTHON_PATH} ${SAM2LONG_DIR}/sam2long_processor.py \\
     --video "\$VIDEO_PATH" \\
     --checkpoint "\$CHECKPOINT" \\
     --outdir "\$OUTDIRECTORY" \\
-    --frame "\$FRAME" \\
+    $([ ! -z "$FRAME" ] && echo "--frame \"\$FRAME\"") \\
     $([ ! -z "$POINTS" ] && echo "--points \"\$POINTS\"")
 
 echo "Job completed at \$(date)"
