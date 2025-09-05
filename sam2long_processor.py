@@ -376,7 +376,7 @@ class SAM2LongProcessor:
 
         # Create visualization
         plt.figure(figsize=(12, 8))
-        plt.title(f"Initial Mask (frame {ann_frame_idx})")
+        plt.title(f"Initial Mask (frame {ann_frame_idx*self.frame_rate_render})")
         plt.imshow(Image.open(os.path.join(self.video_frames_dir, self.scanned_frames[ann_frame_idx])))
         self._show_points(points, labels, plt.gca())
         self._show_mask((out_mask_logits[0] > 0.0).cpu().numpy(), plt.gca(), obj_id=out_obj_ids[0])
@@ -471,7 +471,7 @@ class SAM2LongProcessor:
 
             for out_frame_idx in range(start_idx, end_idx, vis_frame_stride):
                 plt.figure(figsize=(6, 4))
-                plt.title(f"frame {out_frame_idx}")
+                plt.title(f"frame {out_frame_idx*self.frame_rate_render}")
 
                 # Open and process image
                 img = Image.open(os.path.join(self.video_frames_dir, self.frame_names[out_frame_idx]))
@@ -484,12 +484,12 @@ class SAM2LongProcessor:
                         # Also save the mask for this frame/object as a small compressed numpy file
                         mask_output_filename = os.path.join(
                             self.frames_output_dir,
-                            f"frame_{out_frame_idx}_obj{out_obj_id}.npz"
+                            f"frame_{out_frame_idx*self.frame_rate_render}_obj{out_obj_id}.npz"
                         )
                         np.savez_compressed(mask_output_filename, mask=out_mask)
 
                 # Save frame
-                output_filename = os.path.join(self.frames_output_dir, f"frame_{out_frame_idx}.jpg")
+                output_filename = os.path.join(self.frames_output_dir, f"frame_{out_frame_idx*self.frame_rate_render}.jpg")
                 plt.savefig(output_filename, format='jpg')
                 plt.close()
                 img.close()  # Explicitly close PIL image
