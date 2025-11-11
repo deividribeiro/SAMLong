@@ -18,7 +18,7 @@ from sam2.build_sam import build_sam2_video_predictor
 
 
 class SAM2LongProcessor:
-    SAM_DIR = "/users/5/ribei056/software/python/sam2"
+    SAM_DIR = "/users/5/ribei056/software/python/sam2" # Update these paths
     SAM2LONG_DIR = "//users/5/ribei056/software/python/SAM2Long/sam2" #looks like the extra // is necessary
     def __init__(self):
         self.frame_rate_render = 6

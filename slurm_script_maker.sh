@@ -7,7 +7,7 @@ VIDEO_PATH=""
 POINTS=""
 CHECKPOINT="tiny"
 JOB_NAME="sam2long"
-LOG_DIR="/projects/standard/fortson/ribei056/data/Leech"
+LOG_DIR="/projects/standard/fortson/ribei056/data/Leech" # The location where you intend to save all outputs
 OUTDIRECTORY=$LOG_DIR
 PYTHON_PATH="python"  # Adjust if using specific environment
 
@@ -28,13 +28,17 @@ usage() {
     echo "  --checkpoint TYPE  Model checkpoint: tiny, small, base-plus (default: tiny)"
     echo "  --job-name NAME    SLURM job name (default: sam2long)"
     echo "  --help             Display this help message"
+    echo "  "
+    echo " Example: ./slurm_script_maker.sh --video /projects/standard/fortson/ribei056/data/Leech/Post 1/170124tb01_post1.mp4 --job-name \"170124tb01_post1\"  "
+    echo "  "
+    echo "    in this example, I don't specify frame or points so that it will automatically do so, and checkpoint=tiny by default."
 }
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --video)
-            VIDEO_PATH="$2"
+            VIDEO_PATH="$2" # The path to the original avi file for a single video
             shift 2
             ;;
         --points)
@@ -101,7 +105,7 @@ nvidia-smi
 VIDEO_PATH="$(echo ${VIDEO_PATH} | sed 's/\\/\\\\/g; s/"/\\"/g')"
 
 # Now process the video path
-SAM2LONG_DIR="/projects/standard/fortson/ribei056/software/python/SAM2Long"
+SAM2LONG_DIR="/projects/standard/fortson/ribei056/software/python/SAM2Long" # point to your installation of SAM2LONG_DIR here
 LOG_DIR="${LOG_DIR}"
 VIDEO_PATH_BASE="$(basename "${VIDEO_PATH}")"
 OLD_VIDEO_PATH_DIR="$(dirname "${VIDEO_PATH}")"
