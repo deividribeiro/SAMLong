@@ -7,7 +7,7 @@ VIDEO_PATH=""
 POINTS=""
 CHECKPOINT="tiny"
 JOB_NAME="sam2long"
-LOG_DIR="/home/fortson/ribei056/data/Leech"
+LOG_DIR="/projects/standard/fortson/ribei056/data/Leech"
 OUTDIRECTORY=$LOG_DIR
 PYTHON_PATH="python"  # Adjust if using specific environment
 
@@ -101,7 +101,7 @@ nvidia-smi
 VIDEO_PATH="$(echo ${VIDEO_PATH} | sed 's/\\/\\\\/g; s/"/\\"/g')"
 
 # Now process the video path
-SAM2LONG_DIR="/home/fortson/ribei056/software/python/SAM2Long"
+SAM2LONG_DIR="/projects/standard/fortson/ribei056/software/python/SAM2Long"
 LOG_DIR="${LOG_DIR}"
 VIDEO_PATH_BASE="$(basename "${VIDEO_PATH}")"
 OLD_VIDEO_PATH_DIR="$(dirname "${VIDEO_PATH}")"
