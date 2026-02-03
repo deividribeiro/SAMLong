@@ -428,6 +428,7 @@ class SAM2LongProcessor:
 
         # Clear output directory
         frames_output_dir = f"{self.outdir}/frames_output_images"
+        self.frames_output_dir = frames_output_dir
         self.cleanup_temp_files()
 
         # Run propagation
@@ -576,6 +577,10 @@ class SAM2LongProcessor:
         Clean up temporary files created during video generation.
         Removes all temporary frame images from frames_output_images directory.
         """
+        if not self.frames_output_dir:
+            print("cleanup_temp_files: frames_output_dir is not set yet; skipping cleanup.")
+            return
+
         if os.path.exists(self.frames_output_dir):
             file_count = 0
             for f in os.listdir(self.frames_output_dir):
