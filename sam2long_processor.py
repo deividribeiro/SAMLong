@@ -490,7 +490,7 @@ class SAM2LongProcessor:
                         np.savez_compressed(mask_output_filename, mask=out_mask)
 
                 # Save frame
-                output_filename = os.path.join(self.frames_output_dir, f"frame_{out_frame_idx*self.frame_rate_render}.jpg")
+                output_filename = os.path.join(self.frames_output_dir, f"frame_{out_frame_idx*self.frame_rate_render:05d}.jpg")
                 plt.savefig(output_filename, format='jpg')
                 plt.close()
                 img.close()  # Explicitly close PIL image
